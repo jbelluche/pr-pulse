@@ -157,6 +157,7 @@ private extension LeaderboardView {
                         contributor: contributor,
                         repository: snapshot.repository,
                         maxCount: maxCount,
+                        allowsExternalLinks: !store.isDemoMode,
                         onDismiss: onDismiss
                     )
                 }
@@ -409,64 +410,76 @@ private struct ContributorRow: View {
     let contributor: Contributor
     let repository: String
     let maxCount: Int
+    let allowsExternalLinks: Bool
     let onDismiss: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        Button {
-            guard let url = GitHubClient.openPullRequestsURL(
-                repository: repository,
-                author: contributor.login
-            ) else { return }
-            NSWorkspace.shared.open(url)
-            onDismiss()
-        } label: {
-            HStack(spacing: 10) {
-                Text("\(rank)")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .frame(width: 18, alignment: .trailing)
-
-                AvatarView(url: contributor.avatarURL, login: contributor.login)
-
-                Text(contributor.login)
-                    .font(.system(size: 12, weight: .medium))
-                    .lineLimit(1)
-                    .frame(width: 112, alignment: .leading)
-
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(PRPulsePalette.progressTrack)
-                        Capsule()
-                            .fill(PRPulsePalette.accent.opacity(0.9))
-                            .frame(
-                                width: max(
-                                    4,
-                                    proxy.size.width * CGFloat(contributor.mergedCount) / CGFloat(maxCount)
-                                )
-                            )
-                    }
-                }
-                .frame(height: 6)
-
-                Text("\(contributor.mergedCount)")
-                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .frame(width: 34, alignment: .trailing)
-
-                Text("\(contributor.openCount) open")
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .frame(width: 48, alignment: .leading)
+        if allowsExternalLinks {
+            Button(action: openPullRequests) {
+                rowContent
             }
-            .contentShape(Rectangle())
-            .padding(.horizontal, 8)
-            .frame(height: 39)
+            .buttonStyle(LeaderboardRowButtonStyle())
+            .help("Open @\(contributor.login)'s open pull requests")
+        } else {
+            rowContent
         }
-        .buttonStyle(LeaderboardRowButtonStyle())
-        .help("Open @\(contributor.login)'s open pull requests")
+    }
+
+    var rowContent: some View {
+        HStack(spacing: 10) {
+            Text("\(rank)")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .monospacedDigit()
+                .frame(width: 18, alignment: .trailing)
+
+            AvatarView(url: contributor.avatarURL, login: contributor.login)
+
+            Text(contributor.login)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+                .frame(width: 112, alignment: .leading)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(PRPulsePalette.progressTrack)
+                    Capsule()
+                        .fill(PRPulsePalette.accent.opacity(0.9))
+                        .frame(
+                            width: max(
+                                4,
+                                proxy.size.width * CGFloat(contributor.mergedCount) / CGFloat(maxCount)
+                            )
+                        )
+                }
+            }
+            .frame(height: 6)
+
+            Text("\(contributor.mergedCount)")
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .frame(width: 34, alignment: .trailing)
+
+            Text("\(contributor.openCount) open")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .frame(width: 48, alignment: .leading)
+        }
+        .contentShape(Rectangle())
+        .padding(.horizontal, 8)
+        .frame(height: 39)
+    }
+
+    func openPullRequests() {
+        guard let url = GitHubClient.openPullRequestsURL(
+            repository: repository,
+            author: contributor.login
+        ) else { return }
+        NSWorkspace.shared.open(url)
+        onDismiss()
     }
 }
 

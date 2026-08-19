@@ -31,8 +31,7 @@ enum ReadmeScreenshot {
     }
 
     nonisolated static let generateArgument = "--generate-readme-screenshot"
-    nonisolated static let userArgument = "--demo-user"
-    nonisolated static let fixtureRepository = "example/project"
+    nonisolated static let userArgument = DemoData.userArgument
 
     nonisolated static func request(arguments: [String]) throws -> Request? {
         guard let generateIndex = arguments.firstIndex(of: generateArgument) else {
@@ -55,7 +54,7 @@ enum ReadmeScreenshot {
             throw ScreenshotError.missingFeaturedLogin
         }
         let featuredLogin = arguments[loginIndex]
-        guard isValidGitHubLogin(featuredLogin) else {
+        guard DemoData.isValidGitHubLogin(featuredLogin) else {
             throw ScreenshotError.invalidFeaturedLogin
         }
 
@@ -70,24 +69,11 @@ enum ReadmeScreenshot {
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> LeaderboardSnapshot {
-        let contributors = [
-            Contributor(login: featuredLogin, avatarURL: nil, mergedCount: 42, openCount: 2),
-            Contributor(login: "contributor-02", avatarURL: nil, mergedCount: 31, openCount: 1),
-            Contributor(login: "contributor-03", avatarURL: nil, mergedCount: 24, openCount: 4),
-            Contributor(login: "contributor-04", avatarURL: nil, mergedCount: 18),
-            Contributor(login: "contributor-05", avatarURL: nil, mergedCount: 12, openCount: 2),
-            Contributor(login: "contributor-06", avatarURL: nil, mergedCount: 7, openCount: 1),
-        ]
-        let window = MonthWindow(containing: now, calendar: calendar)
-        return LeaderboardSnapshot(
-            metricVersion: LeaderboardSnapshot.currentMetricVersion,
-            repository: fixtureRepository,
-            periodStart: window.start,
-            periodEnd: window.end,
-            fetchedAt: now,
-            totalCount: contributors.reduce(0) { $0 + $1.mergedCount },
-            contributors: contributors
-        )
+        DemoData.configuration(
+            featuredLogin: featuredLogin,
+            now: now,
+            calendar: calendar
+        ).snapshots[0]
     }
 
     @MainActor
@@ -99,25 +85,16 @@ enum ReadmeScreenshot {
             now: now,
             calendar: calendar
         )
-        let temporaryDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PRPulseScreenshot-\(UUID().uuidString)", isDirectory: true)
-        let cache = SnapshotCache(fileURL: temporaryDirectory.appendingPathComponent("fixture.json"))
-        let defaultsSuite = "PRPulseScreenshot.\(UUID().uuidString)"
-        guard let defaults = UserDefaults(suiteName: defaultsSuite) else {
-            throw ScreenshotError.couldNotCreateBitmap
-        }
-        defer {
-            defaults.removePersistentDomain(forName: defaultsSuite)
-            try? FileManager.default.removeItem(at: temporaryDirectory)
-        }
-
-        try cache.save(snapshot)
+        let demoConfiguration = DemoData.configuration(
+            featuredLogin: request.featuredLogin,
+            now: now,
+            calendar: calendar
+        )
         let store = LeaderboardStore(
             repository: snapshot.repository,
-            cache: cache,
-            preference: RepositoryPreference(defaults: defaults),
             now: { now },
-            calendar: calendar
+            calendar: calendar,
+            demoConfiguration: demoConfiguration
         )
         let contentSize = NSSize(
             width: 560,
@@ -193,17 +170,5 @@ enum ReadmeScreenshot {
             withIntermediateDirectories: true
         )
         try pngData.write(to: request.outputURL, options: .atomic)
-    }
-}
-
-private extension ReadmeScreenshot {
-    nonisolated static func isValidGitHubLogin(_ login: String) -> Bool {
-        guard !login.isEmpty, login.count <= 39,
-              login.first != "-", login.last != "-",
-              !login.contains("--")
-        else {
-            return false
-        }
-        return login.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
     }
 }

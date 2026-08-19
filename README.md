@@ -65,6 +65,27 @@ The selected repository is stored locally in macOS user defaults.
 swift test
 ```
 
+## Run with mock data
+
+```zsh
+./Scripts/run_demo.sh
+```
+
+This rebuilds and launches the real menu-bar app with fake contributors, PR
+counts, and repositories. It closes any running PR Pulse instance first. Demo
+mode does not call GitHub or read or write your selected repository, cache, or
+preferences.
+
+The default featured login is `demo-user`. To show your own public handle while
+keeping every other value fictional:
+
+```zsh
+PR_PULSE_DEMO_USER=your-handle ./Scripts/run_demo.sh
+```
+
+Click the repository footer to switch between the three fake projects, then
+take a normal macOS screenshot of the popover.
+
 ## Update the README screenshot
 
 ```zsh

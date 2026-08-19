@@ -11,6 +11,7 @@ final class LeaderboardStore {
     private(set) var isLoadingRepositories = false
     private(set) var lastError: String?
     private(set) var repositoryError: String?
+    var isDemoMode: Bool { demoConfiguration != nil }
 
     @ObservationIgnored private let client: GitHubClient
     @ObservationIgnored private let cache: SnapshotCache
@@ -18,6 +19,7 @@ final class LeaderboardStore {
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private let calendar: Calendar
     @ObservationIgnored private let onPresentationChange: (LeaderboardSnapshot?, Bool) -> Void
+    @ObservationIgnored private let demoConfiguration: DemoLeaderboardConfiguration?
     @ObservationIgnored private var snapshotsByRepository: [String: LeaderboardSnapshot] = [:]
     @ObservationIgnored private var repositoryGeneration = 0
 
@@ -28,6 +30,7 @@ final class LeaderboardStore {
         preference: RepositoryPreference = .live,
         now: @escaping () -> Date = { Date() },
         calendar: Calendar = .current,
+        demoConfiguration: DemoLeaderboardConfiguration? = nil,
         onPresentationChange: @escaping (LeaderboardSnapshot?, Bool) -> Void = { _, _ in }
     ) {
         self.client = client
@@ -35,7 +38,20 @@ final class LeaderboardStore {
         self.preference = preference
         self.now = now
         self.calendar = calendar
+        self.demoConfiguration = demoConfiguration
         self.onPresentationChange = onPresentationChange
+
+        if let demoConfiguration {
+            self.repository = demoConfiguration.selectedRepository
+            repositories = demoConfiguration.repositories
+            snapshot = demoConfiguration.snapshot(for: demoConfiguration.selectedRepository)
+            snapshotsByRepository = Dictionary(
+                uniqueKeysWithValues: demoConfiguration.snapshots.map {
+                    ($0.repository.lowercased(), $0)
+                }
+            )
+            return
+        }
 
         let selectedRepository = repository?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.repository = selectedRepository?.isEmpty == false ? selectedRepository : nil
@@ -53,6 +69,11 @@ final class LeaderboardStore {
     }
 
     func loadRepositories() async {
+        if let demoConfiguration {
+            repositories = demoConfiguration.repositories
+            repositoryError = nil
+            return
+        }
         guard !isLoadingRepositories else { return }
         isLoadingRepositories = true
         defer { isLoadingRepositories = false }
@@ -75,6 +96,18 @@ final class LeaderboardStore {
         }
 
         repositoryGeneration += 1
+        if let demoConfiguration {
+            guard let demoSnapshot = demoConfiguration.snapshot(for: selectedRepository) else {
+                return false
+            }
+            repository = demoSnapshot.repository
+            snapshot = demoSnapshot
+            lastError = nil
+            repositoryError = nil
+            onPresentationChange(demoSnapshot, false)
+            return true
+        }
+
         repository = selectedRepository
         preference.save(selectedRepository)
         let repositoryKey = selectedRepository.lowercased()
@@ -105,6 +138,12 @@ final class LeaderboardStore {
 
     func refresh() async {
         guard let requestedRepository = repository else { return }
+        if let demoConfiguration {
+            snapshot = demoConfiguration.snapshot(for: requestedRepository)
+            lastError = nil
+            onPresentationChange(snapshot, false)
+            return
+        }
         let requestedGeneration = repositoryGeneration
         isRefreshing = true
         defer {

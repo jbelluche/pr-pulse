@@ -37,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var repositoryTask: Task<Void, Never>?
     private var outsideClickMonitor: Any?
     private var isChoosingRepository = false
+    private var isDemoMode = false
     private lazy var contextMenu: NSMenu = {
         let menu = NSMenu()
         let quitItem = NSMenuItem(
@@ -50,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let demoConfiguration: DemoLeaderboardConfiguration?
         do {
             if let request = try ReadmeScreenshot.request(
                 arguments: ProcessInfo.processInfo.arguments
@@ -60,26 +62,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                 NSApp.terminate(nil)
                 return
             }
+            demoConfiguration = try DemoData.configuration(
+                arguments: ProcessInfo.processInfo.arguments
+            )
         } catch {
             FileHandle.standardError.write(
-                Data("Could not generate README screenshot: \(error.localizedDescription)\n".utf8)
+                Data("Could not start PR Pulse: \(error.localizedDescription)\n".utf8)
             )
             exit(EXIT_FAILURE)
         }
 
         NSApp.setActivationPolicy(.accessory)
 
-        let preference = RepositoryPreference.live
-        let cache = SnapshotCache.live
-        let initialRepository = preference.load() ?? cache.lastRepository()
-        store = LeaderboardStore(
-            repository: initialRepository,
-            cache: cache,
-            preference: preference,
-            onPresentationChange: { [weak self] snapshot, hasError in
-                self?.updatePresentation(snapshot: snapshot, hasError: hasError)
-            }
-        )
+        isDemoMode = demoConfiguration != nil
+        if let demoConfiguration {
+            store = LeaderboardStore(
+                repository: demoConfiguration.selectedRepository,
+                demoConfiguration: demoConfiguration,
+                onPresentationChange: { [weak self] snapshot, hasError in
+                    self?.updatePresentation(snapshot: snapshot, hasError: hasError)
+                }
+            )
+        } else {
+            let preference = RepositoryPreference.live
+            let cache = SnapshotCache.live
+            let initialRepository = preference.load() ?? cache.lastRepository()
+            store = LeaderboardStore(
+                repository: initialRepository,
+                cache: cache,
+                preference: preference,
+                onPresentationChange: { [weak self] snapshot, hasError in
+                    self?.updatePresentation(snapshot: snapshot, hasError: hasError)
+                }
+            )
+        }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         statusItem.autosaveName = "PRPulseStatusItem"
@@ -117,15 +133,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             )
         )
 
-        refreshTimer = Timer.scheduledTimer(
-            timeInterval: Self.refreshInterval,
-            target: self,
-            selector: #selector(refreshFromTimer),
-            userInfo: nil,
-            repeats: true
-        )
-        startRepositoryLoad()
-        startRefresh()
+        if !isDemoMode {
+            refreshTimer = Timer.scheduledTimer(
+                timeInterval: Self.refreshInterval,
+                target: self,
+                selector: #selector(refreshFromTimer),
+                userInfo: nil,
+                repeats: true
+            )
+            startRepositoryLoad()
+            startRefresh()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -191,7 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func startRefresh() {
-        guard store.repository != nil, refreshTask == nil else { return }
+        guard !isDemoMode, store.repository != nil, refreshTask == nil else { return }
         let generation = refreshTaskGeneration.begin()
         refreshTask = Task { [weak self] in
             guard let self else { return }

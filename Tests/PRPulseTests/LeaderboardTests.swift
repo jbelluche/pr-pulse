@@ -422,6 +422,64 @@ struct LeaderboardTests {
     }
 
     @Test
+    func demoModeProvidesOnlyFictionalRepositoriesAndContributors() throws {
+        let configuration = try #require(
+            try DemoData.configuration(arguments: [
+                "PRPulse",
+                "--demo-data",
+                "--demo-user",
+                "sample-user",
+            ])
+        )
+
+        #expect(configuration.selectedRepository == "example/project")
+        #expect(configuration.repositories.map(\.fullName) == [
+            "example/project",
+            "example/mobile-app",
+            "example/api-service",
+        ])
+        #expect(configuration.snapshots.count == 3)
+        #expect(configuration.snapshots.allSatisfy { snapshot in
+            snapshot.repository.hasPrefix("example/")
+                && snapshot.contributors.allSatisfy { contributor in
+                    contributor.avatarURL == nil
+                        && (contributor.login == "sample-user"
+                            || contributor.login.hasPrefix("contributor-"))
+                }
+                && snapshot.totalCount == snapshot.contributors.reduce(0) {
+                    $0 + $1.mergedCount
+                }
+        })
+    }
+
+    @MainActor
+    @Test
+    func demoStoreSwitchesRepositoriesWithoutLivePersistence() async throws {
+        let configuration = DemoData.configuration(featuredLogin: "sample-user")
+        let suiteName = "PRPulseDemoTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let preference = RepositoryPreference(defaults: defaults)
+        let store = LeaderboardStore(
+            repository: configuration.selectedRepository,
+            preference: preference,
+            demoConfiguration: configuration
+        )
+
+        #expect(store.repository == "example/project")
+        #expect(store.isDemoMode)
+        #expect(store.repositories.count == 3)
+        #expect(store.snapshot?.totalCount == 134)
+        #expect(store.selectRepository("example/mobile-app"))
+        #expect(store.repository == "example/mobile-app")
+        #expect(store.snapshot?.totalCount == 82)
+        #expect(preference.load() == nil)
+        await store.refresh()
+        #expect(store.snapshot?.repository == "example/mobile-app")
+        #expect(store.lastError == nil)
+    }
+
+    @Test
     func canceledRefreshCannotClearItsReplacementTask() {
         var ownership = RefreshTaskGeneration()
         let canceledGeneration = ownership.begin()
