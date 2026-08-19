@@ -1,5 +1,7 @@
 # PR Pulse
 
+Heavily inspired from [hipsterreed](https://github.com/hipsterreed)
+
 PR Pulse is a small native macOS menu-bar app that shows a month-to-date pull
 request leaderboard for a repository you choose.
 
